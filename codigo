@@ -1,0 +1,334 @@
+#define STEP 8         // pin STEP de DRV8825 a pin 4
+#define DIR  9         // pin DIR de DRV8825 a pin 5
+#define EN  13   
+#define ENDSTOP  A0      // pin EN de DRV8825 a pin 13
+
+int IN1 = 10;			// IN1 de L298N a pin digital 2
+int IN2 = 11;			// IN2 de L298N a pin digital 3
+int ENA = 12;			// ENA de L298N a pin digital 5
+
+//DECALRACIONES COLOR//
+#include <Arduino.h>
+
+
+// Definición de pines del sensor
+const int S0 = 5;   // Conecta S0 al pin 5
+const int S1 = 6;   // Conecta S1 al pin 6
+const int S2 = 2;   // Conecta S2 al pin 2
+const int S3 = 3;   // Conecta S3 al pin 3
+const int OUT = 4;  // Conecta el pin OUT del sensor al pin 4
+const int OE = 7;   // Conecta OE al pin 7
+
+
+void setup() 
+{
+  pinMode(STEP, OUTPUT);  
+  pinMode(DIR, OUTPUT);   
+  pinMode(EN, OUTPUT);    
+  digitalWrite(EN, HIGH); // Deshabilita el driver por defecto
+
+  pinMode(IN1, OUTPUT);   
+  pinMode(IN2, OUTPUT);   
+  pinMode(ENA, OUTPUT);   
+  pinMode(ENDSTOP, INPUT_PULLUP); // Configura el pin del final de carrera como entrada con resistencia pull-up
+  
+  ///////////////////////////////////////color
+    pinMode(S0, OUTPUT);
+    pinMode(S1, OUTPUT);
+    pinMode(S2, OUTPUT);
+    pinMode(S3, OUTPUT);
+    pinMode(OUT, INPUT);
+    pinMode(OE, OUTPUT);
+
+    // Configurar la frecuencia de salida al 20%
+    digitalWrite(S0, HIGH);
+    digitalWrite(S1, LOW);
+
+    // Habilitar el sensor poniendo OE en LOW
+    digitalWrite(OE, LOW);
+
+  Serial.begin(9600);    
+}
+///////////////////////////////////////
+// *Declaración global del array y las variables de control*
+String coloresDetectados[6];  // Array fijo para almacenar colores detectados
+int numColoresActuales = 0;   // Cantidad de colores actualmente almacenados
+String colorFinal = "";       // Variable global para almacenar el color final detectado
+
+// Función para leer el valor de rojo
+int leerRojo() {
+    digitalWrite(S2, LOW);
+    digitalWrite(S3, LOW);
+    delay(100);  // Espera para que el sensor estabilice
+    return pulseIn(OUT, LOW);  // Lee el pulso del pin OUT
+}
+
+// Función para leer el valor de verde
+int leerVerde() {
+    digitalWrite(S2, HIGH);
+    digitalWrite(S3, HIGH);
+    delay(100);  // Espera para que el sensor estabilice
+    return pulseIn(OUT, LOW);  // Lee el pulso del pin OUT
+}
+
+// Función para leer el valor de azul
+int leerAzul() {
+    digitalWrite(S2, LOW);
+    digitalWrite(S3, HIGH);
+    delay(100);  // Espera para que el sensor estabilice
+    return pulseIn(OUT, LOW);  // Lee el pulso del pin OUT
+}
+
+// Función para identificar el color basado en valores RGB
+String detectarColor(int rojo, int verde, int azul) {
+    if (rojo > verde && rojo > azul && rojo > 300) {
+        return "rojo";
+    } else if (verde > rojo && verde > azul && verde > 300) {
+        return "verde";
+    } else if (azul > rojo && azul > verde && azul > 300) {
+        return "azul";
+    } else if (rojo > 200 && verde > 200 && azul < 150) {
+        return "amarillo";
+    } else if (rojo > 200 && verde > 100 && azul < 100) {
+        return "naranja";
+    } else if (rojo > 100 && verde > 50 && azul < 50) {
+        return "marron";
+    }
+    return "indefinido";
+}
+
+// Función para obtener el color más repetido en 8 lecturas
+String obtenerColorMasRepetido(String lecturas[], int size) {
+    int contador[6] = {0};  // Contadores para los colores rojo, verde, azul, amarillo, naranja, marrón
+    String colores[6] = {"rojo", "verde", "azul", "amarillo", "naranja", "marron"};
+
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < 6; j++) {
+            if (lecturas[i] == colores[j]) {
+                contador[j]++;
+            }
+        }
+    }
+
+    int maxContador = 0;
+    int indiceMax = 0;
+
+    for (int i = 0; i < 6; i++) {
+        if (contador[i] > maxContador) {
+            maxContador = contador[i];
+            indiceMax = i;
+        }
+    }
+
+    return colores[indiceMax];
+}
+
+// Función para almacenar el color detectado y verificar la posición 5
+void almacenarColor(String color) {
+    // Si ya hay 6 colores, desplazar todo a la izquierda para eliminar el más antiguo
+    if (numColoresActuales == 6) {
+        for (int i = 0; i < 5; i++) {
+            coloresDetectados[i] = coloresDetectados[i + 1];
+        }
+        coloresDetectados[5] = color;  // Agregar el nuevo color al final
+    } else {
+        // Si aún no hay 6 colores, solo agregar el color
+        coloresDetectados[numColoresActuales] = color;
+        numColoresActuales++;
+    }
+
+    // Consultar la posición 5
+    Serial.print("El color en la posición 5 es: ");
+    if (numColoresActuales >= 6) {
+        Serial.println(coloresDetectados[5]);
+    } else {
+        Serial.println("vacío (aún no hay suficientes colores)");
+    }
+}
+
+// Función principal para tomar lecturas del sensor y determinar el color final
+void tomarLecturasSensor() {
+    String lecturas[8];
+    Serial.println("Tomando 8 lecturas del sensor:");
+
+    for (int i = 0; i < 8; i++) {  // Toma 8 lecturas
+        int rojo = leerRojo();
+        int verde = leerVerde();
+        int azul = leerAzul();
+
+        Serial.print("Lectura ");
+        Serial.print(i + 1);
+        Serial.print(" - RGB: (");
+        Serial.print(rojo);
+        Serial.print(", ");
+        Serial.print(verde);
+        Serial.print(", ");
+        Serial.print(azul);
+        Serial.println(")");
+
+        String color = detectarColor(rojo, verde, azul);
+        lecturas[i] = color;
+
+        Serial.print("Color detectado: ");
+        Serial.println(color);
+
+        delay(250);  // Esperar 0.25 segundos entre lecturas
+    }
+
+    // Determinar el color más repetido en las 8 lecturas
+    colorFinal = obtenerColorMasRepetido(lecturas, 8);
+    Serial.print("Color final detectado: ");
+    Serial.println(colorFinal);
+
+    // Almacenar el color final en el array
+    almacenarColor(colorFinal);
+}
+///////////////////////////////////////
+
+void moverMotor(int direccion, int pasos, int velocidad) 
+{
+  analogWrite(EN, LOW);         // Habilita el driver
+  digitalWrite(DIR, direccion); 
+  for (int i = 0; i < pasos; i++) {
+    Serial.print("PASO:"), Serial.println(i);
+    digitalWrite(STEP, HIGH);
+    delay(velocidad);
+    digitalWrite(STEP, LOW);
+    delay(velocidad);
+  }
+  digitalWrite(EN, HIGH);        // Deshabilita el driver al finalizar
+}
+
+void moverDC(int tiempo){
+  analogWrite(ENA, 100);	// habilita motor A (giro en un sentido)
+  Serial.print("tiempo ingresada:"), Serial.println(tiempo);
+  digitalWrite(IN1, LOW);	// IN1 a 0
+  digitalWrite(IN2, HIGH);	// IN2 a 1
+  delay(tiempo);			// demora de 3 seg.
+
+  analogWrite(ENA, 0);	// ENA en 0 para deshabilitar motor
+  //delay(1000);			// demora de 2 seg.		// demora de 2 seg.
+}
+
+
+int leerValor(String mensaje) {
+  int valor = 0;
+  while (true) {
+    Serial.println(mensaje);
+    while (Serial.available() == 0);
+    if (Serial.available() > 0) {
+      valor = Serial.parseInt();
+      if (valor > 0) break; // Acepta valores dentro del rango
+    }
+  }
+  return valor;
+}
+
+
+void home(int velocidad) 
+{
+  Serial.println("Realizando homing...");
+  digitalWrite(EN, LOW);          // Habilita el driver
+  digitalWrite(DIR, LOW);         // Configura la dirección (antihorario)
+  
+  while (analogRead(A5) > 500) { // Gira hasta que el final de carrera se active
+    Serial.print("flag:"),Serial.println(analogRead(A5));
+    digitalWrite(STEP, HIGH);
+    delay(velocidad);
+    digitalWrite(STEP, LOW);
+    delay(velocidad); 
+    }
+  delay(500);  
+  moverMotor(HIGH, 40, velocidad);
+  digitalWrite(EN, HIGH);         // Deshabilita el driver
+  Serial.println("Homing completado.");
+}
+
+void loop() 
+{
+   Serial.println("INGRESE COMANDO:");
+  delay(500);
+  int pasos=0;
+  if (Serial.available() > 0) {      
+    char comando = Serial.read();   
+    if (comando == 'a') {           
+      int pasos = leerValor("Introduce el número de pasos:");
+      Serial.print("La rotación será de: "), Serial.println(pasos);
+      int velocidad = leerValor("Introduce la velocidad (ms):");
+      Serial.print("Velocidad de rotación: "), Serial.println(velocidad);
+
+      Serial.println("Moviendo el motor paso a paso...");
+      moverMotor(HIGH, pasos, velocidad);    
+      delay(2000), Serial.println("Cambio de sentido");                  
+      moverMotor(LOW, pasos, velocidad);     
+      delay(2000);
+      Serial.println("Movimiento completado.");
+    }
+    else if (comando == 'b') {      //solamente prueba la ruleta//
+      int duracionDC = leerValor("Introduce la duración del giro en milisegundos:");
+      Serial.print("TIEMPO DE GIRO:"), Serial.println(duracionDC);
+
+      Serial.println("RULETA");
+      int duracionR=(duracionDC/6);
+      for(int i=0;i<6;i++){
+      Serial.print("RULETA :"),Serial.println(i);  
+      moverDC(duracionR);
+      delay(500);
+      }
+
+      Serial.println("Movimiento del motor DC completado.");
+    }
+        else if (comando == 'h') { // Homing motor paso a paso
+      int velocidad = leerValor("Introduce la velocidad del homing (ms):");
+      home(velocidad);
+  }
+    else if (comando == 'x'){
+      Serial.println("inicio de la secuencia X");
+      home(25);
+      moverDC(1275/6);
+      delay(250);
+      tomarLecturasSensor();
+      // Verificar el color detectado y asignar pasos específicos
+      if (colorFinal == "rojo") {
+        pasos = 50;
+        Serial.print("Color ROJO detectado. Pasos: ");
+        Serial.println(pasos);
+      } 
+      else if (colorFinal == "verde") {
+        pasos = 100;
+        Serial.print("Color VERDE detectado. Pasos: ");
+        Serial.println(pasos);
+      } 
+      else if (colorFinal == "azul") {
+        pasos = 150;
+        Serial.print("Color AZUL detectado. Pasos: ");
+        Serial.println(pasos);
+      } 
+      else if (colorFinal == "amarillo") {
+        pasos = 200;
+        Serial.print("Color AMARILLO detectado. Pasos: ");
+        Serial.println(pasos);
+      } 
+      else if (colorFinal == "naranja") {
+        pasos = 250;
+        Serial.print("Color NARANJA detectado. Pasos: ");
+        Serial.println(pasos);
+      } 
+      else if (colorFinal == "marron") {
+        pasos = 300;
+        Serial.print("Color MARRÓN detectado. Pasos: ");
+        Serial.println(pasos);
+      } 
+      else {
+        Serial.println("El color detectado es indefinido o no se reconoce. Pasos no asignados.");
+        pasos = 0; // No asignar pasos si el color es indefinido
+      }
+      moverMotor(HIGH, pasos, 10);
+      delay(250);
+      moverMotor(LOW, pasos, 10);
+      delay(250);
+      moverDC(1275/6);  
+      Serial.println("final de la secuencia X");
+    }
+delay(500);
+}}
